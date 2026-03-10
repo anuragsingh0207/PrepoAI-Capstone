@@ -1,6 +1,9 @@
 streamlit
-langchain
+langchain==0.3.0
 google-generativeai
-chromadb
+numpy
 pypdf
 python-dotenv
+python-pptx
+langchain-google-genai
+langchain-cohere
