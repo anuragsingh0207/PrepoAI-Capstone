@@ -12,7 +12,7 @@ from io import BytesIO
 from pypdf import PdfReader
 from pptx import Presentation
 from langchain_core.documents import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 def extract_text_from_pdf(file_stream) -> str:
     """Extracts text from a PDF file stream."""
