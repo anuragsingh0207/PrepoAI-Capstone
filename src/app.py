@@ -1,113 +1,102 @@
 """
 app.py
-Responsibility: Anisha
+Responsibility: Application Router & State Machine
 
-This module contains the Streamlit code for the user interface.
-It connects the Ingestion, Embeddings, and RAG Engine modules.
+This module acts as the Single Page Application (SPA) entrypoint.
+It initializes states and routes the user seamlessly between isolated views.
 """
 import streamlit as st
-import time
-from langchain_core.messages import HumanMessage, AIMessage
 
-# Import internal modules
-from ingestion import load_documents
-from embeddings import get_vector_store
-from rag_engine import get_rag_chain
+try:
+    import config
+except ImportError:
+    pass
 
-st.set_page_config(page_title="PrepoAI", page_icon="📘")
+from ui.styles import inject_custom_css
+from ui.views import upload_view, action_view, question_view, mock_test_view, result_view, chat_view
 
-def main():
-    st.title("PrepoAI: Intelligent Educational RAG System")
-    st.write("Welcome to your AI Study Companion. Upload your notes (PDF/PPTX) and start a deep conversation or generate exam questions.")
+st.set_page_config(page_title="PrepoAI", page_icon="⚒️", layout="wide")
 
-    # Sidebar for File Upload
-    with st.sidebar:
-        st.header("Your Material")
-        uploaded_files = st.file_uploader(
-            "Upload lecture notes, slides, or textbooks", 
-            type=['pdf', 'pptx', 'ppt'], 
-            accept_multiple_files=True
-        )
-        
-        process_btn = st.button("Process Documents")
+# 1. Inject Styles
+inject_custom_css()
 
-    # Session State Initialization
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
-    
-    if "rag_chain" not in st.session_state:
+# Global Navigation Bar (Matching Mockup)
+st.markdown("""
+<div style="display:flex; justify-content:space-between; align-items:center; padding: 15px 40px; margin:-3rem -3rem 2rem -3rem; border-bottom: 0.5px solid rgba(255,255,255,0.05); background:#141412;">
+    <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:20px; color:#5DCAA5;">✨</span>
+        <span style="font-size:18px; font-weight:700; color:#ffffff; font-family:'Sora',sans-serif; letter-spacing:-0.5px;">Prepo<span style="color:#ffffff;">AI</span><sup style="color:#5DCAA5;">✦</sup></span>
+    </div>
+    <div style="display:flex; gap:30px; font-family:'Sora',sans-serif; font-size:13px; color:#a8a69f; font-weight:500;">
+        <span style="cursor:pointer;">Features</span>
+        <span style="cursor:pointer;">How it Works</span>
+        <span style="cursor:pointer;">Pricing</span>
+        <span style="cursor:pointer;">Blog</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:20px; font-family:'Sora',sans-serif;">
+        <span style="font-size:13px; color:#a8a69f; font-weight:600; cursor:pointer;">Login</span>
+        <button style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff; border-radius:30px; padding:8px 20px; font-size:13px; font-weight:500; cursor:pointer;">Get Started</button>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# 2. State Initialization
+def init_state():
+    if 'current_view' not in st.session_state:
+        st.session_state.current_view = 'UPLOAD'
+    if 'rag_chain' not in st.session_state:
         st.session_state.rag_chain = None
 
-    # Processing Logic
-    if process_btn and uploaded_files:
-        with st.spinner("Ingesting and Embedding Documents..."):
-            try:
-                # 1. Ingest
-                docs = load_documents(uploaded_files)
-                st.sidebar.success(f"Loaded {len(docs)} chunks from {len(uploaded_files)} files.")
-                
-                # 2. Embed
-                vector_store = get_vector_store(docs)
-                st.sidebar.success("Vector Store Created.")
-                
-                # 3. Initialize Chain
-                st.session_state.rag_chain = get_rag_chain(vector_store)
-                st.sidebar.success("RAG Engine Ready!")
-                
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
+init_state()
 
-    # Chat Interface
-    for message in st.session_state.chat_history:
-        if isinstance(message, HumanMessage):
-            with st.chat_message("user"):
-                st.markdown(message.content)
-        elif isinstance(message, AIMessage):
-            with st.chat_message("assistant"):
-                st.markdown(message.content)
+# 3. Sidebar Context
+with st.sidebar:
+    st.markdown("### PrepoAI 📚")
+    if st.session_state.rag_chain is None:
+        st.caption("No document loaded.")
+    else:
+        st.success("Active Knowledge Base Loaded")
+        if st.button("Reset Session", use_container_width=True):
+            st.session_state.clear()
+            st.rerun()
 
-    # Input Area
-    user_input = st.chat_input("Ask a question about your documents...")
+# 4. View Router
+current_view = st.session_state.get('current_view', 'UPLOAD')
 
-    # Logic for interaction
-    if user_input:
-        handle_user_input(user_input)
+# Central constraint container
+st.markdown('<div style="max-width: 900px; margin: 0 auto;">', unsafe_allow_html=True)
+
+if current_view == 'UPLOAD':
+    upload_view.render()
     
-    # helper button for exam questions (if chain works)
-    if st.session_state.rag_chain:
-         if st.sidebar.button("Generate Exam Questions"):
-             handle_user_input("Generate a comprehensive list of exam questions based on the uploaded documents, following the strict output structure.")
-
-
-def handle_user_input(input_text):
-    if not st.session_state.rag_chain:
-        st.error("Please upload and process documents first.")
-        return
-
-    # Add user message to UI immediately
-    st.chat_message("user").markdown(input_text)
+elif current_view == 'ACTION':
+    action_view.render()
     
-    # We append to history here for the UI, but the chain also manages history 
-    # via the chat_history arg we pass to it.
-    st.session_state.chat_history.append(HumanMessage(content=input_text))
+elif current_view == 'Q_PAPER':
+    question_view.render()
+    
+elif current_view == 'MOCK_TEST':
+    mock_test_view.render()
+    
+elif current_view == 'RESULT':
+    result_view.render()
+    
+elif current_view == 'ASK_Q':
+    chat_view.render()
+    
+else:
+    st.error("Invalid View State Accessed.")
 
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            try:
-                # The chain expects 'input' and 'chat_history'
-                response = st.session_state.rag_chain.invoke({
-                    "input": input_text,
-                    "chat_history": st.session_state.chat_history
-                })
-                
-                answer = response["answer"]
-                st.markdown(answer)
-                
-                # Append AI response to history
-                st.session_state.chat_history.append(AIMessage(content=answer))
-                
-            except Exception as e:
-                st.error(f"Error generating response: {e}")
+st.markdown('</div>', unsafe_allow_html=True)
 
-if __name__ == "__main__":
-    main()
+# Footer
+st.markdown("""
+<div style="display:flex; justify-content:space-between; align-items:center; padding: 20px 40px; margin-top:5rem; border-top: 0.5px solid rgba(255,255,255,0.05);">
+    <div style="font-family:'Sora',sans-serif; font-size:12px; color:#6e6c66;">
+        Copyright © PrepoAI. All rights reserved. <span style="text-decoration:underline; cursor:pointer; color:#a8a69f;">Privacy Policy</span>
+    </div>
+    <div style="display:flex; gap:15px; color:#6e6c66; font-size:16px;">
+        <span>🐦</span> <span>📘</span> <span>👾</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)

@@ -6,7 +6,7 @@ This module handles the generation of vector embeddings from processed text and 
 """
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_cohere import CohereEmbeddings
 from langchain_community.vectorstores import FAISS
 
 load_dotenv()
@@ -15,8 +15,8 @@ def get_vector_store(docs):
     """
     Creates or updates a FAISS vector store from a list of documents.
     """
-    # Use the comprehensive embedding model
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+    # Use Cohere embeddings instead of Google Gemini to avoid strict free-tier rate limits
+    embeddings = CohereEmbeddings(model="embed-english-v3.0")
     
     # Create the vector store using FAISS
     # FAISS is a standard, efficient library for similarity search.

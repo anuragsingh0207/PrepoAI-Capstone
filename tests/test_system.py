@@ -4,13 +4,22 @@ Integration test for PrepoAI components.
 """
 import os
 import sys
+
+# Support emojis in windows console
+if sys.stdout.encoding.lower() != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 from langchain_core.documents import Document
 
 # Ensure we can import modules in the same directory
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Ensure we can import modules from src
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from embeddings import get_vector_store
-from rag_engine import get_rag_chain
+from backend.embeddings import get_vector_store
+from backend.rag_engine import get_rag_chain
 
 def test_pipeline():
     print("1. Creating dummy documents...")

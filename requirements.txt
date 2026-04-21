@@ -7,3 +7,4 @@ python-dotenv
 python-pptx
 langchain-google-genai
 langchain-cohere
+langchain-groq

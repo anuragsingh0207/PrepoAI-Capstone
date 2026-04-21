@@ -58,9 +58,11 @@ def load_documents(uploaded_files) -> List[Document]:
         
         if file_name.endswith('.pdf'):
             text = extract_text_from_pdf(uploaded_file)
+            print(f"DEBUG: Extracted {len(text)} characters from {file_name}")
             raw_text += text + "\n\n"
         elif file_name.endswith('.pptx') or file_name.endswith('.ppt'):
             text = extract_text_from_pptx(uploaded_file)
+            print(f"DEBUG: Extracted {len(text)} characters from {file_name}")
             raw_text += text + "\n\n"
         else:
             # Fallback for text files if needed, or skip
@@ -68,8 +70,8 @@ def load_documents(uploaded_files) -> List[Document]:
 
     # Split the text
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=100,
+        chunk_size=500,
+        chunk_overlap=50,
         length_function=len,
         is_separator_regex=False,
     )
