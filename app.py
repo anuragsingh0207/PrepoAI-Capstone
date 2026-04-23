@@ -187,7 +187,7 @@ elif page == PAGE_RESULT:
 
 elif page == PAGE_ABOUT:
     from styles import page_header_html
-    st.markdown(page_header_html("ℹ️", "About Prepo AI", ""), unsafe_allow_html=True)
+    st.markdown(page_header_html("ℹ️", "About Prepo AI"), unsafe_allow_html=True)
     st.markdown(f"""
     <div style="max-width:650px;margin:0 auto;">
         <div style="background:{WHITE};border:1.5px solid {SAND}28;border-radius:14px;padding:28px;margin-bottom:16px;">
@@ -195,14 +195,14 @@ elif page == PAGE_ABOUT:
                 Prepo<span style="color:{RUST};">AI</span>
             </div>
             <p style="font-size:14.5px;color:{SAGE};line-height:1.7;margin-bottom:14px;">
-                Prepo AI is an intelligent interview and exam preparation assistant built as a capstone project.
-                It uses Google Gemini 2.0 Flash to help you understand your study material, generate practice questions,
+                Prepo AI is an intelligent RAG System for Automated Knowledge Extraction and Adaptive Assessment
+                It helps you understand your study material, generate practice questions,
                 and evaluate your answers with detailed feedback.
             </p>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;">
                 <div style="padding:12px;background:{CREAM};border-radius:10px;border:1px solid {SAND}25;">
                     <div style="font-weight:600;color:{FOREST};margin-bottom:4px;">🤖 AI Engine</div>
-                    <div style="font-size:13px;color:{SAGE};">Google Gemini 2.0 Flash</div>
+                    <div style="font-size:13px;color:{SAGE};">Google Gemini</div>
                 </div>
                 <div style="padding:12px;background:{CREAM};border-radius:10px;border:1px solid {SAND}25;">
                     <div style="font-weight:600;color:{FOREST};margin-bottom:4px;">🖥️ Framework</div>
@@ -214,12 +214,12 @@ elif page == PAGE_ABOUT:
                 </div>
                 <div style="padding:12px;background:{CREAM};border-radius:10px;border:1px solid {SAND}25;">
                     <div style="font-weight:600;color:{FOREST};margin-bottom:4px;">🏫 Project Type</div>
-                    <div style="font-size:13px;color:{SAGE};">Capstone / Academic</div>
+                    <div style="font-size:13px;color:{SAGE};">Academic</div>
                 </div>
             </div>
         </div>
         <div style="background:{CREAM};border:1px solid {SAND}30;border-radius:12px;padding:18px;text-align:center;">
-            <div style="font-size:13px;color:{SAGE};">Built with ❤️ for the Prepo AI Capstone Project · v1.0.0</div>
+            <div style="font-size:13px;color:{SAGE};">PrepoAI</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
