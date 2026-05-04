@@ -1,9 +1,23 @@
 import streamlit as st
 import time
 from backend.prompts import build_dynamic_prompt, build_eval_prompt
-from backend.rag_engine import generate_response
+from backend.rag_engine import generate_response_with_sources
+
 
 def render():
+    if "mock_questions" not in st.session_state:
+        st.session_state.mock_questions = []
+
+    if "mock_answers" not in st.session_state:
+        st.session_state.mock_answers = []
+
+    if "mock_current_q" not in st.session_state:
+        st.session_state.mock_current_q = 0
+
+    if "mock_test_active" not in st.session_state:
+        st.session_state.mock_test_active = False
+    if "mock_evaluations" not in st.session_state:
+        st.session_state.mock_evaluations = []
     col1, col2 = st.columns([1, 4])
     with col1:
         if st.button("← Finish / Exit", key="mt_exit"):
@@ -23,28 +37,28 @@ def render():
         st.caption("A dedicated, timed focus environment.")
         rounds = st.number_input("Total Questions", min_value=1, max_value=20, value=5)
         mt_type = st.selectbox("Test Type", ["Technical", "Conceptual", "Mixed"])
-        
+
         if st.button("Start Timer & Test", type="primary"):
             prompt = build_dynamic_prompt('interview', {"duration": rounds, "round_type": mt_type})
             with st.spinner("Generating Test Scenario..."):
-                response = generate_response(st.session_state.rag_chain, prompt)
-                raw_text = response["answer"]
-                
-                # Parse questions securely
-                questions = [q.strip() for q in raw_text.split("|||") if q.strip()]
-                # Fallback if LLM ignores delimiter formatting
-                if len(questions) == 1:
-                    questions = [q.strip() for q in raw_text.split("\n\n") if q.strip()]
-                
-                # Initialize States
-                st.session_state.mock_questions = questions
-                st.session_state.mock_answers = [""] * len(questions)
-                st.session_state.mock_evaluations = [None] * len(questions)
-                st.session_state.mock_current_q = 0
-                st.session_state.mock_test_start_time = time.time()
-                st.session_state.mock_test_active = True
-                
+                try:
+                    answer, sources = generate_response_with_sources(st.session_state.rag_chain, prompt)
+                    raw_text = str(answer)
+                    questions = [q.strip() for q in raw_text.split("|||") if q.strip()]
+                    if len(questions) == 1:  # fallback split
+                        questions = [q.strip() for q in raw_text.split("\n\n") if q.strip()]
+
+                    st.session_state.mock_questions = questions
+                    st.session_state.mock_answers = [""] * len(questions)
+                    st.session_state.mock_evaluations = [None] * len(questions)
+                    st.session_state.mock_current_q = 0
+                    st.session_state.mock_test_start_time = time.time()
+                    st.session_state.mock_test_active = True
+
+                except Exception as e:
+                    st.error(f"Failed to start mock test: {e}")
             st.rerun()
+
             
     # ---------------------------------------------------------
     # Active Test Phase
@@ -60,7 +74,7 @@ def render():
         </div>
         """, unsafe_allow_html=True)
         
-        q_idx = st.session_state.mock_current_q
+        q_idx = min(st.session_state.mock_current_q, len(st.session_state.mock_questions) - 1)
         total_q = len(st.session_state.mock_questions)
         current_question = st.session_state.mock_questions[q_idx]
         
@@ -86,8 +100,9 @@ def render():
                     eval_prompt = build_eval_prompt(current_question, answer_text, max_marks=10)
                     with st.spinner("Evaluating your response..."):
                         try:
-                            eval_resp = generate_response(st.session_state.rag_chain, eval_prompt)
-                            st.session_state.mock_evaluations[q_idx] = eval_resp["answer"]
+                            answer, sources = generate_response_with_sources(st.session_state.rag_chain, eval_prompt)
+                            st.session_state.mock_evaluations[q_idx] = answer
+                            st.session_state.last_sources = sources
                         except Exception as e:
                             st.error(f"Failed to evaluate: {e}")
                 else:
@@ -104,9 +119,18 @@ def render():
                 st.session_state.mock_answers[q_idx] = answer_text
                 st.session_state.mock_current_q += 1
                 st.rerun()
-                
+
         # 4. Display Evaluation if it exists
-        if st.session_state.mock_evaluations[q_idx]:
-            st.markdown("---")
+        st.markdown("---")
+        if st.session_state.mock_evaluations and st.session_state.mock_evaluations[q_idx]:
             st.markdown("### 🎓 Teacher's Evaluation")
-            st.markdown(f"<div style='background:#1e1e1c; padding:15px; border-radius:10px; border:1px solid #333;'>{st.session_state.mock_evaluations[q_idx]}</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='background:#1e1e1c; padding:15px; border-radius:10px; border:1px solid #333;'>{st.session_state.mock_evaluations[q_idx]}</div>",
+                unsafe_allow_html=True,
+            )
+
+            sources_list = st.session_state.get("last_sources", [])
+            if sources_list:
+                with st.expander("📚 Sources"):
+                    for src in sources_list:
+                        st.markdown(f"- {src}")

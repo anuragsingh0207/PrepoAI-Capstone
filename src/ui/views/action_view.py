@@ -33,4 +33,9 @@ def render():
     with c3:
         if st.button("💬 Ask Questions", use_container_width=True):
             st.session_state.current_view = 'ASK_Q'
-            st.rerun()
+            st.rerun() 
+    st.markdown("<br>", unsafe_allow_html=True)
+    # 🧠 Evaluation mode button
+    if st.button("🧠 Evaluation Mode", use_container_width=True):
+        st.session_state.current_view = "EVAL"
+        st.rerun()

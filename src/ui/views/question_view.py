@@ -1,6 +1,6 @@
 import streamlit as st
 from backend.prompts import build_dynamic_prompt
-from backend.rag_engine import generate_response
+from backend.rag_engine import generate_response_with_sources
 
 def render():
     col1, col2 = st.columns([1, 4])
@@ -17,7 +17,7 @@ def render():
         with c1:
             q_count = st.number_input("Question count", min_value=5, max_value=100, value=20)
         with c2:
-            difficulty = st.selectbox("Difficulty", ["Easy", "Medium", "Hard", "Mixed"], index=1)
+            difficulty = st.selectbox("Difficulty", ["easy", "medium", "hard", "mixed"], index=1)
             
         st.markdown("**Question Types**")
         t1, t2, t3, t4 = st.columns(4)
@@ -44,15 +44,22 @@ def render():
         
         with st.spinner("Forging your question paper..."):
             try:
-                response = generate_response(st.session_state.rag_chain, prompt)
-                st.session_state.qpaper_result = response["answer"]
+                answer, sources = generate_response_with_sources(st.session_state.rag_chain, prompt)
+                st.session_state.qpaper_result = answer
+                st.session_state.qpaper_sources = sources
+
             except Exception as e:
                 st.error(f"Error: {e}")
 
     if st.session_state.get('qpaper_result'):
         st.markdown("---")
         st.markdown(st.session_state.qpaper_result)
-        
-        # In a real app we would cache questions to check answers against, but for now we just show a static placeholder
-        if st.button("Generate Answers", use_container_width=True):
-            st.info("Answer Generation requested! (Prompt logic here)")
+
+    if st.session_state.get('qpaper_sources'):
+        st.markdown("### 📚 Sources")
+    for s in st.session_state.qpaper_sources:
+          st.markdown(f"- {s}")
+
+
+    if st.button("Generate Answers", use_container_width=True):
+        st.info("Answer Generation requested! (Prompt logic here)")

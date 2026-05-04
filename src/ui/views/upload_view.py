@@ -5,22 +5,60 @@ from backend.rag_engine import get_rag_chain
 
 def render():
     st.markdown("""
-    <div style="text-align: center; margin-bottom: 2rem; margin-top: 2rem;">
+<style>
+.block-container {
+    padding-top: 2rem;
+}
+
+/* Remove duplicate/ghost label */
+.stFileUploader label {
+    display: none !important;
+}
+
+/* Fix upload button text rendering */
+.stFileUploader button {
+    font-size: 14px !important;
+    text-transform: none !important;
+}
+
+/* Fix spacing inside uploader */
+.stFileUploader div[data-testid="stFileUploadDropzone"] {
+    padding: 20px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+    # existing UI continues
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 2rem;">
         <h1 style="font-size:28px; font-weight:600; color:#f0ede8;">Upload Material</h1>
         <p style="color:#a8a69f;">Drop your study PDF to begin building your knowledge base.</p>
     </div>
     """, unsafe_allow_html=True)
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     
-    uploaded_files = st.file_uploader(
-        "Supported formats: PDF, PPTX",
-        accept_multiple_files=True,
-        type=["pdf", "pptx", "ppt", "txt", "docx"],
-        label_visibility="hidden"
-    )
+    if "uploader_initialized" not in st.session_state:
+       st.session_state.uploader_initialized = True
 
+       uploaded_files = st.file_uploader(
+           "",
+           accept_multiple_files=True,
+           type=["pdf", "pptx", "ppt", "txt", "docx"],
+           label_visibility="hidden",
+           key="upload_main_unique_final"
+    )
+    else:
+    
+        uploaded_files = st.file_uploader(
+            "",
+            accept_multiple_files=True,
+            type=["pdf", "pptx", "ppt", "txt", "docx"],
+            label_visibility="hidden",
+            key="upload_main_unique_final_2"  # fallback key
+    )
+    
     # Mock up instruction section
     st.markdown("""
-    <div style="text-align: center; margin-top: 6rem; margin-bottom: 3rem;">
+    <div style="text-align: center; margin-top: 2rem; margin-bottom: 3rem;">
         <h2 style="font-size:26px; font-weight:600; color:#f0ede8;">How PrepoAI Works</h2>
     </div>
     <div style="display: flex; justify-content: space-around; text-align: center; align-items: flex-start; max-width: 800px; margin: 0 auto; padding-bottom:4rem;">
