@@ -34,8 +34,7 @@ The system enables users to upload study material and interact with it through m
 
 ## 🚀 Key Features
 
-### 🧠 RAG Intelligence Layer (Implemented by Anshika Singh)
-
+### 🧠 RAG Intelligence Layer 
 * **Metadata-Aware Ingestion** (source, page/slide tracking)
 * **Contextual Retrieval (FAISS + optional reranking)**
 * **Conversational Memory (history-aware RAG)**
