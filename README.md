@@ -2,8 +2,23 @@
 
 ### Capstone Project - BS CSDA (IIT Patna)
 
-**Project Lead:** Anurag
-**RAG System & AI Features:** Anshika Singh
+## 👥 Team
+- **Anurag Singh** – Project Lead, System Design
+- **Anshika Singh** – RAG System, LLM Integration, AI Features
+
+---
+
+
+## 🧠 My Contribution (Anshika Singh)
+
+- Built the **RAG pipeline** (ingestion → retrieval → LLM response)
+- Implemented **FAISS-based contextual retrieval**
+- Integrated **LLM APIs (Groq)** with prompt engineering
+- Designed **multi-mode system** (QGen, Summary, Flashcards, Evaluation)
+- Added **conversation memory (history-aware chat)**
+- Implemented **answer evaluation + source citation**
+
+> Note: This was a collaborative project. Contributions listed reflect primary areas of responsibility.  
 
 **Tech Stack:** Python, LangChain, Groq API, Cohere, FAISS, Streamlit
 
