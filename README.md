@@ -5,6 +5,7 @@
 ## 👥 Team
 - **Anurag Singh** – Project Lead, System Design
 - **Anshika Singh** – RAG System, LLM Integration, AI Features
+- **Anisha Singh** - Frontend, User-Interface
 
 ---
 
@@ -17,6 +18,11 @@
 - Designed **multi-mode system** (QGen, Summary, Flashcards, Evaluation)
 - Added **conversation memory (history-aware chat)**
 - Implemented **answer evaluation + source citation**
+
+## Contribution by Anisha Singh
+- Built the whole frontend of the website
+- Designed different tabs for funcationality
+- Responsible for the integrating frontend and backend algorithm
 
 > Note: This was a collaborative project. Contributions listed reflect primary areas of responsibility.  
 
