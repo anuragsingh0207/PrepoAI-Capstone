@@ -22,8 +22,7 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain_cohere import CohereRerank
 
-from backend.prompts import SYSTEM_PROMPT
-
+from backend.prompts import SYSTEM_PROMPT, build_dynamic_prompt
 def get_rag_chain(vector_store):
     """
     Creates a conversational RAG chain.
@@ -40,7 +39,15 @@ def get_rag_chain(vector_store):
         rerank_n = 5
         retrieval_k = 20
 
-    llm = ChatGroq(model=llm_model, temperature=llm_temp)
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    llm = ChatGroq(
+    model=llm_model,
+    temperature=llm_temp,
+    api_key=os.getenv("GROQ_API_KEY")
+)
+
     
     # 1. Retriever Setup
     base_retriever = vector_store.as_retriever(search_kwargs={"k": retrieval_k}) 
@@ -76,26 +83,69 @@ def get_rag_chain(vector_store):
         llm, retriever, contextualize_q_prompt
     )
 
-    # 3. QA Chain (Generation)
+
+    # 3. QA Chain (Generation – dynamic prompt)
+    # Collect dynamic tool mode and config if provided
+    selected_tool = getattr(config, "SELECTED_TOOL", "qpaper")
+    tool_config = getattr(config, "TOOL_CONFIG", {})
+
+    user_mode_prompt = build_dynamic_prompt(selected_tool, tool_config)
+    combined_prompt = SYSTEM_PROMPT + "\n\n" + user_mode_prompt + "\n\nContext:\n{context}"
+
     qa_prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", SYSTEM_PROMPT + "\n\nContext:\n{context}"),
+            ("system", combined_prompt),
             ("placeholder", "{chat_history}"),
             ("human", "{input}"),
         ]
     )
-    
+
     question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
     rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-    
     return rag_chain
 
-def generate_response(rag_chain, prompt):
-    """
-    Executes the LLM generation securely with the constructed prompt.
-    """
-    return rag_chain.invoke({
-        "input": prompt,
-        "chat_history": []
-    })
+from streamlit import session_state as st
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
 
+
+def get_message_history(session_id: str = "default"):
+    """Maintain per‑session chat history."""
+    if "chat_histories" not in st:
+        st.chat_histories = {}
+    if session_id not in st.chat_histories:
+        st.chat_histories[session_id] = ChatMessageHistory()
+    return st.chat_histories[session_id]
+
+
+def generate_response_with_sources(rag_chain, prompt):
+    """
+    Executes RAG and returns both the answer and metadata‑based sources.
+    Keeps chat history persistent across questions.
+    """
+    history = get_message_history("default")
+    rag_with_memory = RunnableWithMessageHistory(
+        rag_chain,
+        get_message_history,
+        input_messages_key="input",
+        history_messages_key="chat_history",
+    )
+
+    result = rag_with_memory.invoke(
+        {"input": prompt}, config={"configurable": {"session_id": "default"}}
+    )
+
+    answer = result.get("answer", result)
+    context_docs = result.get("context", [])
+    sources = []
+
+    for d in context_docs:
+        meta = d.metadata
+        src = meta.get("source", "Unknown")
+        page = meta.get("page") or meta.get("slide")
+        if page:
+            sources.append(f"{src} (p.{page})")
+        else:
+            sources.append(src)
+
+    return answer, list(set(sources))
