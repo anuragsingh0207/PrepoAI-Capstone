@@ -1,112 +1,225 @@
+import sys, os as _os
+_UI_DIR = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
+if _UI_DIR not in sys.path:
+    sys.path.insert(0, _UI_DIR)
 import streamlit as st
-import time
-from backend.prompts import build_dynamic_prompt, build_eval_prompt
-from backend.rag_engine import generate_response
+from styles import page_header_html
+from config import get_gemini_client, evaluate_answer
+from constants import FOREST, SAND, RUST, SAGE, CREAM, WHITE, PAGE_RESULT, PAGE_MOCK
 
 def render():
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        if st.button("← Finish / Exit", key="mt_exit"):
-            if st.session_state.get('mock_questions'):
-                st.session_state.current_view = 'RESULT'
-            else:
-                st.session_state.current_view = 'ACTION'
-                st.session_state.mock_test_active = False
-            st.rerun()
+    st.markdown(page_header_html("🎯", "Mock Test", "Answer the questions — take your time"), unsafe_allow_html=True)
 
-    st.markdown("### Mock Test Mode")
-    
-    # ---------------------------------------------------------
-    # Setup Phase
-    # ---------------------------------------------------------
-    if not st.session_state.get('mock_test_active', False):
-        st.caption("A dedicated, timed focus environment.")
-        rounds = st.number_input("Total Questions", min_value=1, max_value=20, value=5)
-        mt_type = st.selectbox("Test Type", ["Technical", "Conceptual", "Mixed"])
-        
-        if st.button("Start Timer & Test", type="primary"):
-            prompt = build_dynamic_prompt('interview', {"duration": rounds, "round_type": mt_type})
-            with st.spinner("Generating Test Scenario..."):
-                response = generate_response(st.session_state.rag_chain, prompt)
-                raw_text = response["answer"]
-                
-                # Parse questions securely
-                questions = [q.strip() for q in raw_text.split("|||") if q.strip()]
-                # Fallback if LLM ignores delimiter formatting
-                if len(questions) == 1:
-                    questions = [q.strip() for q in raw_text.split("\n\n") if q.strip()]
-                
-                # Initialize States
-                st.session_state.mock_questions = questions
-                st.session_state.mock_answers = [""] * len(questions)
-                st.session_state.mock_evaluations = [None] * len(questions)
-                st.session_state.mock_current_q = 0
-                st.session_state.mock_test_start_time = time.time()
-                st.session_state.mock_test_active = True
-                
-            st.rerun()
-            
-    # ---------------------------------------------------------
-    # Active Test Phase
-    # ---------------------------------------------------------
-    else:
-        # 1. Timer Logic
-        elapsed = int(time.time() - st.session_state.mock_test_start_time)
-        mins, secs = divmod(elapsed, 60)
-        
+    questions = st.session_state.get("mock_questions", [])
+    submitted = st.session_state.get("mock_submitted", False)
+
+    if not questions:
         st.markdown(f"""
-        <div style="background:#1a3a2a; padding:10px; border-radius:8px; border:1px solid #4cd964; margin-bottom:1rem; text-align:center;">
-             <span style="color:#4cd964; font-family:'JetBrains Mono', monospace; font-size:18px; font-weight:600;">⏱️ TIME ELAPSED: {mins:02d}:{secs:02d}</span>
+        <div style="background:{CREAM};border:1.5px solid {SAND}50;border-radius:14px;padding:28px;text-align:center;">
+            <div style="font-size:36px;margin-bottom:10px;">🎯</div>
+            <div style="font-size:16px;font-weight:600;color:{FOREST};margin-bottom:6px;">No test configured</div>
+            <div style="font-size:13.5px;color:{SAGE};">Go to Mock Test → Configure & Start to generate questions.</div>
         </div>
         """, unsafe_allow_html=True)
-        
-        q_idx = st.session_state.mock_current_q
-        total_q = len(st.session_state.mock_questions)
-        current_question = st.session_state.mock_questions[q_idx]
-        
-        st.markdown(f"**Question {q_idx + 1} of {total_q}**")
-        st.info(current_question)
-        
-        # 2. Answer Input
-        answer_text = st.text_area(
-            "Your Answer", 
-            value=st.session_state.mock_answers[q_idx], 
-            height=200, 
-            key=f"ans_input_{q_idx}"
-        )
-        
-        # 3. Action Buttons (Submit, Navigate)
-        cA, cB, cC = st.columns(3)
-        with cA:
-            if st.button("Submit & Evaluate", type="primary", use_container_width=True):
-                # Save answer
-                st.session_state.mock_answers[q_idx] = answer_text
-                
-                if answer_text.strip():
-                    eval_prompt = build_eval_prompt(current_question, answer_text, max_marks=10)
-                    with st.spinner("Evaluating your response..."):
-                        try:
-                            eval_resp = generate_response(st.session_state.rag_chain, eval_prompt)
-                            st.session_state.mock_evaluations[q_idx] = eval_resp["answer"]
-                        except Exception as e:
-                            st.error(f"Failed to evaluate: {e}")
-                else:
-                    st.warning("Please write an answer before evaluating.")
-                    
-        with cB:
-            if st.button("⬅️ Previous", disabled=(q_idx == 0), use_container_width=True):
-                st.session_state.mock_answers[q_idx] = answer_text
-                st.session_state.mock_current_q -= 1
-                st.rerun()
-                
-        with cC:
-            if st.button("Skip / Next ➡️", disabled=(q_idx == total_q - 1), use_container_width=True):
-                st.session_state.mock_answers[q_idx] = answer_text
-                st.session_state.mock_current_q += 1
-                st.rerun()
-                
-        # 4. Display Evaluation if it exists
-        if st.session_state.mock_evaluations[q_idx]:
-            st.markdown("---")
-            st.markdown("### 🎓 Teacher's Evaluation")
-            st.markdown(f"<div style='background:#1e1e1c; padding:15px; border-radius:10px; border:1px solid #333;'>{st.session_state.mock_evaluations[q_idx]}</div>", unsafe_allow_html=True)
+        if st.button("⚙️ Configure Test", use_container_width=True):
+            st.session_state["current_page"] = "🎯 Mock Test"
+            st.rerun()
+        return
+
+    cfg = st.session_state.get("mock_config", {})
+    answers = st.session_state.get("mock_answers", {})
+
+    #Progress bar 
+    answered = len([k for k, v in answers.items() if v is not None and v != ""])
+    progress = answered / len(questions) if questions else 0
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-size:13px;font-weight:500;color:{SAGE};">Progress: {answered}/{len(questions)} answered</div>
+        <div style="display:flex;gap:8px;">
+            <span style="font-size:12px;background:{SAND}25;color:{RUST};padding:3px 10px;border-radius:20px;font-weight:600;">{cfg.get('difficulty','')}</span>
+            <span style="font-size:12px;background:{SAGE}20;color:{SAGE};padding:3px 10px;border-radius:20px;font-weight:600;">{cfg.get('q_type','')}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.progress(progress)
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+    #Questions 
+    for i, q in enumerate(questions):
+        qid    = q.get("id", i + 1)
+        qtype  = q.get("type", "mcq").lower()
+        qtext  = q.get("question", "")
+        opts   = q.get("options", [])
+        topic  = q.get("topic", "")
+
+        st.markdown(f"""
+        <div class="question-card">
+            <div class="q-number">Question {i+1} of {len(questions)}{' · '+topic if topic else ''}</div>
+            <div class="q-text">{qtext}</div>
+            {"" if not topic else ""}
+        </div>
+        """, unsafe_allow_html=True)
+
+        key = f"ans_{qid}"
+
+        if qtype in ("mcq", "multiple_choice") and opts:
+            ans = st.radio(
+                f"Select answer for Q{i+1}",
+                opts,
+                key=key,
+                label_visibility="collapsed",
+                index=None if key not in st.session_state else None,
+            )
+            answers[qid] = ans
+
+        elif qtype in ("true_false", "true/false"):
+            ans = st.radio(
+                f"Select for Q{i+1}",
+                ["True", "False"],
+                key=key,
+                label_visibility="collapsed",
+                index=None,
+            )
+            answers[qid] = ans
+
+        elif qtype in ("short_answer", "short answer"):
+            ans = st.text_area(
+                f"Your answer for Q{i+1}",
+                key=key,
+                placeholder="Type your answer here…",
+                height=100,
+                label_visibility="collapsed",
+            )
+            answers[qid] = ans
+
+        else:
+            # Default MCQ fallback
+            if opts:
+                ans = st.radio(f"Q{i+1}", opts, key=key, label_visibility="collapsed", index=None)
+                answers[qid] = ans
+            else:
+                ans = st.text_area(f"Your answer for Q{i+1}", key=key, height=100, label_visibility="collapsed")
+                answers[qid] = ans
+
+        st.session_state["mock_answers"] = answers
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+    #Submit
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+    unanswered = len(questions) - len([v for v in answers.values() if v is not None and v != ""])
+    if unanswered > 0:
+        st.warning(f"⚠️ {unanswered} question(s) unanswered. You can still submit.")
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("✅ Submit Test", use_container_width=True, type="primary"):
+            with st.spinner("Evaluating your answers…"):
+                _evaluate_and_save(questions, answers)
+            st.session_state["mock_submitted"] = True
+            st.session_state["current_page"] = PAGE_RESULT
+            st.rerun()
+
+    if st.button("🔄 Restart Test", use_container_width=True):
+        st.session_state["mock_questions"] = []
+        st.session_state["mock_answers"]   = {}
+        st.session_state["mock_submitted"] = False
+        st.rerun()
+
+
+def _evaluate_and_save(questions: list[dict], answers: dict):
+    client = get_gemini_client()
+    results = []
+    total_score = 0
+    max_score   = 0
+
+    for q in questions:
+        qid     = q.get("id", 0)
+        qtype   = q.get("type", "mcq").lower()
+        correct = q.get("correct_answer", "")
+        user_a  = answers.get(qid, "")
+        max_score += 10
+
+        if not user_a:
+            results.append({
+                "question": q.get("question"),
+                "user_answer": "(No answer)",
+                "correct_answer": correct,
+                "type": qtype,
+                "score": 0,
+                "verdict": "skipped",
+                "feedback": "No answer provided.",
+                "missed_points": [],
+                "strong_points": [],
+                "topic": q.get("topic", ""),
+                "options": q.get("options", []),
+            })
+            continue
+
+        if qtype in ("mcq", "multiple_choice", "true_false", "true/false"):
+            # Exact match (compare stripped lowercase)
+            def _norm(s):
+                s = str(s).strip().lower()
+                # strip leading "a. ", "b. " etc
+                import re
+                s = re.sub(r'^[a-d]\.\s*', '', s)
+                return s
+            correct_n = _norm(correct)
+            user_n    = _norm(user_a)
+            is_correct = correct_n == user_n or str(correct).strip().lower() in str(user_a).strip().lower()
+            score    = 10 if is_correct else 0
+            verdict  = "correct" if is_correct else "incorrect"
+            feedback = "✓ Correct!" if is_correct else f"The correct answer was: {correct}"
+        else:
+            # Short answer: use AI evaluation
+            eval_result = evaluate_answer(client, q.get("question"), correct, user_a)
+            score   = eval_result.get("score", 5)
+            verdict = eval_result.get("verdict", "unknown")
+            feedback = eval_result.get("feedback", "")
+            eval_result["question"]       = q.get("question")
+            eval_result["user_answer"]    = user_a
+            eval_result["correct_answer"] = correct
+            eval_result["type"]           = qtype
+            eval_result["topic"]          = q.get("topic", "")
+            eval_result["options"]        = q.get("options", [])
+            results.append(eval_result)
+            total_score += score
+            continue
+
+        total_score += score
+        results.append({
+            "question": q.get("question"),
+            "user_answer": user_a,
+            "correct_answer": correct,
+            "type": qtype,
+            "score": score,
+            "verdict": verdict,
+            "feedback": feedback,
+            "missed_points": [],
+            "strong_points": [],
+            "topic": q.get("topic", ""),
+            "options": q.get("options", []),
+        })
+
+    percentage = (total_score / max_score * 100) if max_score else 0
+
+    st.session_state["test_results"] = {
+        "results": results,
+        "total_score": total_score,
+        "max_score": max_score,
+        "percentage": percentage,
+        "num_questions": len(questions),
+        "correct_count": len([r for r in results if r.get("verdict") == "correct"]),
+        "config": st.session_state.get("mock_config", {}),
+    }
+
+    # Update global stats
+    if "stats" not in st.session_state:
+        st.session_state.stats = {}
+    stats = st.session_state.stats
+    stats["tests_taken"] = stats.get("tests_taken", 0) + 1
+    stats["questions_answered"] = stats.get("questions_answered", 0) + len(questions)
+    all_scores = stats.get("all_scores", [])
+    all_scores.append(percentage)
+    stats["all_scores"] = all_scores
+    stats["avg_score"]  = sum(all_scores) / len(all_scores)
