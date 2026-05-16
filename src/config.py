@@ -1,6 +1,5 @@
 import streamlit as st
-from google import genai
-from google.genai import types
+from groq import Groq
 import json, re
 from constants import (
     GEMINI_MODEL, CHAT_SYSTEM_PROMPT,
@@ -12,10 +11,9 @@ API_KEY = ""
 
 @st.cache_resource
 def get_gemini_client():
-    return genai.Client(api_key=API_KEY)
+    return Groq(api_key=API_KEY)
 
 def build_context_from_docs(uploaded_docs: list[dict]) -> str:
-    """Combine all uploaded document texts into a single context string."""
     if not uploaded_docs:
         return ""
     parts = []
@@ -24,30 +22,27 @@ def build_context_from_docs(uploaded_docs: list[dict]) -> str:
     return "\n".join(parts)
 
 def stream_chat_response(client, messages: list[dict], context: str):
-    """Stream a chat response from Gemini with document context."""
     system = CHAT_SYSTEM_PROMPT
     if context:
         system += f"\n\nStudy Material provided by user:\n{context}"
 
-    contents = []
+    groq_messages = [{"role": "system", "content": system}]
     for m in messages:
-        role = "user" if m["role"] == "user" else "model"
-        contents.append(types.Content(role=role, parts=[types.Part(text=m["content"])]))
+        groq_messages.append({"role": m["role"], "content": m["content"]})
 
-    config = types.GenerateContentConfig(
-        system_instruction=system,
+    response = client.chat.completions.create(
+        model=GEMINI_MODEL,
+        messages=groq_messages,
         temperature=st.session_state.get("temperature", DEFAULT_TEMPERATURE),
-        max_output_tokens=st.session_state.get("max_tokens", DEFAULT_MAX_TOKENS),
-    )
-    response = client.models.generate_content_stream(
-        model=GEMINI_MODEL, contents=contents, config=config
+        max_tokens=st.session_state.get("max_tokens", DEFAULT_MAX_TOKENS),
+        stream=True
     )
     for chunk in response:
-        if chunk.text:
-            yield chunk.text
+        text = chunk.choices[0].delta.content
+        if text:
+            yield text
 
 def generate_questions(client, context: str, num_q: int, difficulty: str, q_type: str) -> list[dict]:
-    """Call Gemini to generate quiz questions from context."""
     if not context:
         return []
 
@@ -61,21 +56,17 @@ def generate_questions(client, context: str, num_q: int, difficulty: str, q_type
         question_type=q_type_key
     )
 
-    contents = [
-        types.Content(role="user", parts=[
-            types.Part(text=f"Study material:\n{context[:12000]}\n\nGenerate {num_q} questions now.")
-        ])
-    ]
-    config = types.GenerateContentConfig(
-        system_instruction=prompt_template,
+    response = client.chat.completions.create(
+        model=GEMINI_MODEL,
+        messages=[
+            {"role": "system", "content": prompt_template},
+            {"role": "user", "content": f"Study material:\n{context[:12000]}\n\nGenerate {num_q} questions now."}
+        ],
         temperature=0.8,
-        max_output_tokens=3000,
+        max_tokens=3000,
+        stream=False
     )
-    response = client.models.generate_content(
-        model=GEMINI_MODEL, contents=contents, config=config
-    )
-    raw = response.text.strip()
-    # Strip markdown code fences if present
+    raw = response.choices[0].message.content.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
     try:
@@ -85,26 +76,22 @@ def generate_questions(client, context: str, num_q: int, difficulty: str, q_type
         return []
 
 def evaluate_answer(client, question: str, correct_answer: str, user_answer: str) -> dict:
-    """Evaluate a user's answer for short-answer questions."""
-    contents = [
-        types.Content(role="user", parts=[
-            types.Part(text=(
+    response = client.chat.completions.create(
+        model=GEMINI_MODEL,
+        messages=[
+            {"role": "system", "content": EVALUATION_SYSTEM_PROMPT},
+            {"role": "user", "content": (
                 f"Question: {question}\n"
                 f"Correct answer: {correct_answer}\n"
                 f"Student's answer: {user_answer}\n"
                 f"Evaluate now."
-            ))
-        ])
-    ]
-    config = types.GenerateContentConfig(
-        system_instruction=EVALUATION_SYSTEM_PROMPT,
+            )}
+        ],
         temperature=0.3,
-        max_output_tokens=500,
+        max_tokens=500,
+        stream=False
     )
-    response = client.models.generate_content(
-        model=GEMINI_MODEL, contents=contents, config=config
-    )
-    raw = response.text.strip()
+    raw = response.choices[0].message.content.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
     try:
