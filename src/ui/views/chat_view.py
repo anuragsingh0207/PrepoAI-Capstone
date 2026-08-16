@@ -4,14 +4,14 @@ if _UI_DIR not in sys.path:
     sys.path.insert(0, _UI_DIR)
 import streamlit as st
 from styles import page_header_html
-from config import get_gemini_client, stream_chat_response, build_context_from_docs
+from config import get_groq_client, stream_chat_response, build_context_from_docs
 from constants import FOREST, SAND, RUST, SAGE, CREAM, WHITE, PAGE_UPLOAD
 
 def render():
     st.markdown(page_header_html("💬", "AI Chat", "Ask questions about your uploaded study material"), unsafe_allow_html=True)
 
     docs = st.session_state.get("uploaded_docs", [])
-    client = get_gemini_client()
+    client = get_groq_client()
 
     if "chat_messages" not in st.session_state:
         st.session_state.chat_messages = []

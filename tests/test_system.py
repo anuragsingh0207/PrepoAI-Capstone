@@ -25,7 +25,7 @@ def test_pipeline():
     print("1. Creating dummy documents...")
     docs = [
         Document(page_content="PrepoAI is an intelligent educational RAG system designed to help students prepare for exams."),
-        Document(page_content="The system uses Google Gemini for generation and Cohere for reranking to ensure high accuracy."),
+        Document(page_content="The system uses Groq for generation and Cohere for reranking to ensure high accuracy."),
         Document(page_content="Users can upload PDF and PPTX files to get exam questions."),
     ]
     

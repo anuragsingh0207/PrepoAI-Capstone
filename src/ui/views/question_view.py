@@ -4,7 +4,7 @@ if _UI_DIR not in sys.path:
     sys.path.insert(0, _UI_DIR)
 import streamlit as st
 from styles import page_header_html
-from config import get_gemini_client, generate_questions, build_context_from_docs
+from config import get_groq_client, generate_questions, build_context_from_docs
 from constants import (FOREST, SAND, RUST, SAGE, CREAM, WHITE,
                        DIFFICULTY_LEVELS, QUESTION_TYPES,
                        DEFAULT_NUM_QUESTIONS, MIN_QUESTIONS, MAX_QUESTIONS,
@@ -68,7 +68,7 @@ def render():
 
             selected_docs = [d for d in docs if d["name"] in doc_choice]
             context = build_context_from_docs(selected_docs)
-            client = get_gemini_client()
+            client = get_groq_client()
 
             with st.spinner(f"Generating {num_q} {difficulty} {q_type} questions…"):
                 questions = generate_questions(client, context, num_q, difficulty, q_type)

@@ -1,6 +1,30 @@
-# .gitignore
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pdf
+*.py[cod]
+*$py.class
+
+# Environment variables
 .env
+.env.local
+
+# Virtual Environments
 venv/
+prepoai-venv/
+ENV/
+env/
+
+# IDEs and Editors
+.vscode/
+.idea/
+
+# macOS
 .DS_Store
+
+# Logs
+*.log
+
+# Streamlit
+.streamlit/
+
+# FAISS DB (If generated locally)
+faiss_index/

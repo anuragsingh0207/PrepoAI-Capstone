@@ -1,193 +1,242 @@
-import sys, os as _os
-_UI_DIR = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), ".."))
-if _UI_DIR not in sys.path:
-    sys.path.insert(0, _UI_DIR)
-import streamlit as st
+"""
+upload_view.py — Production-grade upload flow with validated text extraction.
+
+FIXES APPLIED:
+  1. extract_text(): replaced bare `except:` with typed exception handling + logging.
+  2. Added empty-text validation after extraction — warns user instead of silently continuing.
+  3. "AI Ready" status is now only set after intelligence extraction actually succeeds
+     (summary is not the failure sentinel string).
+  4. Visible error messages shown for extraction or AI failures instead of silent fallbacks.
+  5. Vector store building is now triggered and stored in session_state for use by chat.
+"""
 import io
-from styles import page_header_html
-from constants import FOREST, SAND, RUST, SAGE, CREAM, WHITE, MIST, ALLOWED_FILE_TYPES
+import time
+import uuid
+import logging
+import traceback
 
-#Text extractors
-def extract_text_from_pdf(file_bytes: bytes) -> str:
-    try:
-        import pypdf
-        reader = pypdf.PdfReader(io.BytesIO(file_bytes))
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
-    except ImportError:
-        try:
-            import pdfplumber  # type: ignore
-            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                return "\n".join(p.extract_text() or "" for p in pdf.pages)
-        except Exception as e:
-            return f"[PDF extraction error: {e}]"
+import streamlit as st
 
-def extract_text_from_docx(file_bytes: bytes) -> str:
-    try:
-        import docx
-        doc = docx.Document(io.BytesIO(file_bytes))
-        return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
-    except Exception as e:
-        return f"[DOCX extraction error: {e}]"
+from constants import FOREST, SAND, RUST, SAGE, CREAM, WHITE, ALLOWED_FILE_TYPES
 
-def extract_text(uploaded_file) -> str:
-    ext = uploaded_file.name.split(".")[-1].lower()
+logger = logging.getLogger("upload_view")
+
+
+# ── Text Extraction ────────────────────────────────────────────────────────────
+
+def extract_text(uploaded_file) -> tuple[str, str | None]:
+    """
+    Extract plain text from an uploaded file.
+
+    Returns:
+        (text, error_msg) — error_msg is None on success.
+    """
+    ext  = uploaded_file.name.rsplit(".", 1)[-1].lower()
     data = uploaded_file.read()
+
     if ext == "pdf":
-        return extract_text_from_pdf(data)
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(data))
+            pages  = [page.extract_text() or "" for page in reader.pages]
+            text   = "\n".join(pages).strip()
+            if not text:
+                return "", (
+                    "PDF appears to be image-based (scanned). "
+                    "Only text-based PDFs are supported for AI analysis."
+                )
+            logger.info(f"PDF extracted: {len(reader.pages)} pages, {len(text)} chars")
+            return text, None
+        except ImportError:
+            logger.error("pypdf is not installed.")
+            return "", "The 'pypdf' library is missing. Please run 'pip install pypdf'."
+        except Exception:
+            logger.error(f"PDF extraction failed:\n{traceback.format_exc()}")
+            return "", "PDF could not be parsed. It may be corrupted or password-protected."
+
     elif ext == "docx":
-        return extract_text_from_docx(data)
+        try:
+            import docx
+            doc  = docx.Document(io.BytesIO(data))
+            text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            if not text:
+                return "", "DOCX file appears to contain no extractable text."
+            logger.info(f"DOCX extracted: {len(text)} chars")
+            return text, None
+        except ImportError:
+            logger.error("python-docx is not installed.")
+            return "", "The 'python-docx' library is missing. Please run 'pip install python-docx'."
+        except Exception:
+            logger.error(f"DOCX extraction failed:\n{traceback.format_exc()}")
+            return "", "DOCX could not be parsed. It may be corrupted."
+
     elif ext in ("txt", "md"):
-        return data.decode("utf-8", errors="ignore")
-    return f"[Unsupported file type: {ext}]"
+        try:
+            text = data.decode("utf-8", errors="replace").strip()
+            if not text:
+                return "", "Text file is empty."
+            return text, None
+        except Exception:
+            logger.error(f"Text file decode failed:\n{traceback.format_exc()}")
+            return "", "Text file could not be decoded."
 
-def fmt_size(n_bytes: int) -> str:
-    if n_bytes < 1024:
-        return f"{n_bytes} B"
-    elif n_bytes < 1024**2:
-        return f"{n_bytes/1024:.1f} KB"
-    return f"{n_bytes/1024**2:.1f} MB"
-
-# Main view
-def render():
-    st.markdown(page_header_html("📄", "Upload Material", "Add your study documents — PDFs, notes, or paste text"), unsafe_allow_html=True)
-
-    if "uploaded_docs" not in st.session_state:
-        st.session_state.uploaded_docs = []
-
-    tab1, tab2 = st.tabs(["📁  Upload Files", "✏️  Paste Text"])
-
-    #TAB 1: File upload 
-    with tab1:
-        st.markdown(f"<div style='height:8px'></div>", unsafe_allow_html=True)
-        uploaded = st.file_uploader(
-            "Drop your files here",
-            type=ALLOWED_FILE_TYPES,
-            accept_multiple_files=True,
-            label_visibility="collapsed",
-            help=f"Supported: {', '.join(ALLOWED_FILE_TYPES).upper()} · Max 50MB"
-        )
-
-        st.markdown(f"""
-        <div style="text-align:center;color:{SAGE};font-size:13px;margin:6px 0 16px;">
-            Supports <b>PDF, TXT, DOCX, MD</b> · Up to 50MB per file
-        </div>
-        """, unsafe_allow_html=True)
-
-        if uploaded:
-            col_btn, col_clear = st.columns([3, 1])
-            with col_btn:
-                if st.button("⚡ Process Files", use_container_width=True, type="primary"):
-                    existing_names = {d["name"] for d in st.session_state.uploaded_docs}
-                    new_count = 0
-                    with st.spinner("Extracting text from documents…"):
-                        for f in uploaded:
-                            if f.name in existing_names:
-                                continue
-                            text = extract_text(f)
-                            st.session_state.uploaded_docs.append({
-                                "name": f.name,
-                                "text": text,
-                                "size": f.size,
-                                "type": f.name.split(".")[-1].upper(),
-                                "chars": len(text),
-                                "words": len(text.split()),
-                            })
-                            new_count += 1
-                    if new_count:
-                        st.success(f"✅ {new_count} file(s) processed successfully!")
-                    else:
-                        st.info("All selected files are already loaded.")
-            with col_clear:
-                if st.button("🗑 Clear All", use_container_width=True):
-                    st.session_state.uploaded_docs = []
-                    st.rerun()
-
-    #TAB 2: Paste text 
-    with tab2:
-        st.markdown(f"<div style='height:8px'></div>", unsafe_allow_html=True)
-        title_input = st.text_input("Document title", placeholder="e.g. Chapter 3 — Data Structures", label_visibility="visible")
-        text_input = st.text_area(
-            "Paste your notes or content here",
-            height=280,
-            placeholder="Paste lecture notes, textbook excerpts, or any study material…",
-            label_visibility="visible",
-        )
-        if st.button("➕ Add Text Document", use_container_width=True):
-            if text_input.strip():
-                name = (title_input.strip() or "Pasted Document") + ".txt"
-                st.session_state.uploaded_docs.append({
-                    "name": name,
-                    "text": text_input,
-                    "size": len(text_input.encode()),
-                    "type": "TXT",
-                    "chars": len(text_input),
-                    "words": len(text_input.split()),
-                })
-                st.success(f"✅ '{name}' added!")
-                st.rerun()
-            else:
-                st.warning("Please paste some text first.")
-
-    #Loaded documents 
-    if st.session_state.uploaded_docs:
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-        st.markdown(f"""
-        <div style="font-size:13px;font-weight:600;color:{SAGE};text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">
-            📚 Loaded Documents ({len(st.session_state.uploaded_docs)})
-        </div>
-        """, unsafe_allow_html=True)
-
-        total_words = sum(d["words"] for d in st.session_state.uploaded_docs)
-        total_chars = sum(d["chars"] for d in st.session_state.uploaded_docs)
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown(f"""<div style="background:{WHITE};border:1.5px solid {SAND}28;border-radius:12px;padding:14px;text-align:center;">
-                <div style="font-family:'Playfair Display',serif;font-size:26px;font-weight:700;color:{RUST};">{len(st.session_state.uploaded_docs)}</div>
-                <div style="font-size:11px;color:{SAGE};text-transform:uppercase;letter-spacing:0.8px;">Documents</div>
-            </div>""", unsafe_allow_html=True)
-        with c2:
-            st.markdown(f"""<div style="background:{WHITE};border:1.5px solid {SAND}28;border-radius:12px;padding:14px;text-align:center;">
-                <div style="font-family:'Playfair Display',serif;font-size:26px;font-weight:700;color:{RUST};">{total_words:,}</div>
-                <div style="font-size:11px;color:{SAGE};text-transform:uppercase;letter-spacing:0.8px;">Total Words</div>
-            </div>""", unsafe_allow_html=True)
-        with c3:
-            st.markdown(f"""<div style="background:{WHITE};border:1.5px solid {SAND}28;border-radius:12px;padding:14px;text-align:center;">
-                <div style="font-family:'Playfair Display',serif;font-size:26px;font-weight:700;color:{RUST};">{total_chars/1000:.1f}K</div>
-                <div style="font-size:11px;color:{SAGE};text-transform:uppercase;letter-spacing:0.8px;">Characters</div>
-            </div>""", unsafe_allow_html=True)
-
-        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-
-        type_icons = {"PDF": "📕", "DOCX": "📘", "TXT": "📄", "MD": "📝"}
-        for i, doc in enumerate(st.session_state.uploaded_docs):
-            icon = type_icons.get(doc["type"], "📄")
-            with st.container():
-                col_info, col_del = st.columns([10, 1])
-                with col_info:
-                    st.markdown(f"""
-                    <div class="upload-success-item">
-                        <span class="file-icon">{icon}</span>
-                        <span class="file-name">{doc['name']}</span>
-                        <span class="file-size">{doc['words']:,} words · {fmt_size(doc['size'])}</span>
-                        <span class="file-ok">✓ Ready</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                with col_del:
-                    if st.button("✕", key=f"del_doc_{i}", help="Remove"):
-                        st.session_state.uploaded_docs.pop(i)
-                        st.rerun()
-
-        # Preview expander
-        with st.expander("👁 Preview document content"):
-            sel = st.selectbox("Select document", [d["name"] for d in st.session_state.uploaded_docs], label_visibility="collapsed")
-            doc_text = next((d["text"] for d in st.session_state.uploaded_docs if d["name"] == sel), "")
-            st.text_area("Content preview", doc_text[:3000] + ("…" if len(doc_text) > 3000 else ""),
-                         height=200, label_visibility="collapsed", disabled=True)
     else:
+        return "", f"Unsupported file type: .{ext}"
+
+
+# ── Build Vector Store ─────────────────────────────────────────────────────────
+
+def _build_vector_store(text: str, uploaded_file_name: str):
+    """
+    Chunk the text and build a FAISS vector store.
+    Returns the vector store on success, None on failure.
+    """
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+        from langchain_core.documents import Document
+        from backend.embeddings import get_vector_store
+
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=500, chunk_overlap=50,
+            length_function=len, is_separator_regex=False
+        )
+        chunks = splitter.split_text(text)
+        if not chunks:
+            logger.warning("Text produced 0 chunks — skipping vector store build.")
+            return None
+
+        docs = [
+            Document(
+                page_content=chunk.strip(),
+                metadata={"source": uploaded_file_name, "chunk_index": i}
+            )
+            for i, chunk in enumerate(chunks)
+        ]
+        logger.info(f"Building vector store: {len(docs)} chunks")
+        vs = get_vector_store(docs)
+        logger.info("Vector store built successfully.")
+        return vs
+
+    except Exception:
+        logger.error(f"Vector store build failed:\n{traceback.format_exc()}")
+        return None
+
+
+# ── Render ─────────────────────────────────────────────────────────────────────
+
+def render():
+    st.markdown("<div style='height: 4vh'></div>", unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 4, 1])
+
+    with col2:
         st.markdown(f"""
-        <div style="text-align:center;padding:40px 20px;color:{SAGE};font-size:14px;">
-            <div style="font-size:40px;margin-bottom:12px;">📭</div>
-            No documents loaded yet. Upload files or paste text above.
+        <div style="text-align: center; margin-bottom: 32px;">
+            <div style="width: 56px; height: 56px; background: linear-gradient(135deg, {SAGE}, {FOREST}); border-radius: 16px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; font-size: 28px; box-shadow: 0 8px 16px rgba(0,0,0,0.1);">🌿</div>
+            <h1 style="font-family: 'Playfair Display', serif; color: {FOREST}; font-size: 42px; font-weight: 700; margin-bottom: 8px;">Prepo AI</h1>
+            <p style="color: {SAGE}; font-size: 16px; max-width: 400px; margin: 0 auto; line-height: 1.5;">The AI understands your material and builds an intelligent workspace around it.</p>
         </div>
         """, unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div style="background: {WHITE}; border-radius: 16px; padding: 32px; box-shadow: 0 4px 24px rgba(0,0,0,0.04); border: 1px solid {SAND}30;">
+        """, unsafe_allow_html=True)
+
+        uploaded_file = st.file_uploader(
+            "Upload your study material",
+            type=ALLOWED_FILE_TYPES,
+            help=f"Supported: {', '.join(ALLOWED_FILE_TYPES).upper()}",
+            label_visibility="collapsed"
+        )
+
+        if not uploaded_file:
+            st.markdown(f"""
+            <div style="text-align: center; margin-top: 24px; color: {SAGE}; font-size: 13.5px;">
+                <div style="font-weight: 600; margin-bottom: 12px; color: {FOREST};">💡 Try uploading:</div>
+                <span style="background: {CREAM}; padding: 6px 12px; border-radius: 20px; border: 1px solid {SAND}40; margin: 4px; display: inline-block;">Lecture Notes</span>
+                <span style="background: {CREAM}; padding: 6px 12px; border-radius: 20px; border: 1px solid {SAND}40; margin: 4px; display: inline-block;">Textbook Chapters</span>
+                <span style="background: {CREAM}; padding: 6px 12px; border-radius: 20px; border: 1px solid {SAND}40; margin: 4px; display: inline-block;">Research Papers</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if uploaded_file:
+            st.markdown("<div style='height: 24px'></div>", unsafe_allow_html=True)
+
+            with st.status("Building your intelligent workspace...", expanded=True) as status:
+
+                # ── Step 1: Extract Text ──────────────────────────────────────
+                st.write("📄 Reading document...")
+                text_content, extract_error = extract_text(uploaded_file)
+
+                if extract_error:
+                    status.update(label="Document Error", state="error", expanded=True)
+                    st.error(f"❌ {extract_error}")
+                    st.stop()
+
+                st.write(f"✅ Extracted {len(text_content):,} characters from document.")
+                time.sleep(0.3)
+
+                # ── Step 2: AI Intelligence ───────────────────────────────────
+                st.write("🧠 Extracting core intelligence...")
+                from backend.intelligence import extract_document_intelligence
+                intelligence = extract_document_intelligence(text_content)
+
+                ai_error = intelligence.get("error")
+                ai_ok = (
+                    ai_error is None
+                    and intelligence.get("summary", "").strip()
+                    and intelligence["summary"] not in {
+                        "Could not generate summary — the AI service returned an error. Check logs for details.",
+                        "No text could be extracted from this document. It may be a scanned image-based PDF.",
+                    }
+                )
+
+                if ai_ok:
+                    st.write("✅ AI summary and topics generated.")
+                else:
+                    st.warning(f"⚠️ AI summary could not be generated: {ai_error or 'Unknown error'}. You can still use the document.")
+
+                time.sleep(0.3)
+
+                # ── Step 3: Build Vector Store ────────────────────────────────
+                st.write("🔍 Building vector search index...")
+                vector_store = _build_vector_store(text_content, uploaded_file.name)
+
+                if vector_store:
+                    st.write(f"✅ Vector search index ready.")
+                else:
+                    st.warning("⚠️ Vector search index could not be built. Contextual chat will use raw text instead.")
+
+                time.sleep(0.3)
+
+                # ── Step 4: Save to Session State ─────────────────────────────
+                st.write("✨ Preparing AI workspace...")
+                doc_id = str(uuid.uuid4())
+
+                if "uploaded_docs" not in st.session_state:
+                    st.session_state.uploaded_docs = {}
+
+                st.session_state.uploaded_docs[doc_id] = {
+                    "name":          uploaded_file.name,
+                    "text":          text_content,
+                    "summary":       intelligence.get("summary", "Summary not available."),
+                    "topics":        intelligence.get("topics",  []),
+                    "upload_time":   time.time(),
+                    "ai_ready":      ai_ok,
+                    "vector_store":  vector_store,       # stored for contextual chat
+                    "char_count":    len(text_content),
+                }
+
+                st.session_state.active_document_id = doc_id
+                st.session_state.app_mode           = "workspace"
+                st.session_state.workspace_view     = "overview"
+
+                status.update(
+                    label="Workspace Ready!" if ai_ok else "Workspace Ready (AI summary unavailable)",
+                    state="complete",
+                    expanded=False
+                )
+
+            st.rerun()

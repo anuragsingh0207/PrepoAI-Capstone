@@ -29,15 +29,19 @@ def get_rag_chain(vector_store):
     """
     try:
         import config
-        llm_model = getattr(config, "LLM_MODEL", "llama-3.3-70b-versatile")
+        llm_model = getattr(config, "GROQ_MODEL", getattr(config, "LLM_MODEL", "llama-3.3-70b-versatile"))
         llm_temp = getattr(config, "LLM_TEMP", 0.3)
         rerank_n = getattr(config, "TOP_N_RERANK", 5)
         retrieval_k = getattr(config, "RETRIEVAL_K", 20)
-    except:
+        selected_tool = getattr(config, "SELECTED_TOOL", "qpaper")
+        tool_config = getattr(config, "TOOL_CONFIG", {})
+    except ImportError:
         llm_model = "llama-3.3-70b-versatile"
         llm_temp = 0.3
         rerank_n = 5
         retrieval_k = 20
+        selected_tool = "qpaper"
+        tool_config = {}
 
     from dotenv import load_dotenv
     load_dotenv()
@@ -86,9 +90,6 @@ def get_rag_chain(vector_store):
 
     # 3. QA Chain (Generation – dynamic prompt)
     # Collect dynamic tool mode and config if provided
-    selected_tool = getattr(config, "SELECTED_TOOL", "qpaper")
-    tool_config = getattr(config, "TOOL_CONFIG", {})
-
     user_mode_prompt = build_dynamic_prompt(selected_tool, tool_config)
     combined_prompt = SYSTEM_PROMPT + "\n\n" + user_mode_prompt + "\n\nContext:\n{context}"
 

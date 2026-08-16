@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: prepoai-capstone
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run src/app.py --server.address 0.0.0.0 --server.port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: COHERE_API_KEY
+        sync: false

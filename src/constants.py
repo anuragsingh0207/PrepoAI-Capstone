@@ -23,8 +23,8 @@ PAGE_ABOUT    = "ℹ️ About"
 
 ALL_PAGES = [PAGE_HOME, PAGE_UPLOAD, PAGE_CHAT, PAGE_MOCK, PAGE_RESULT, PAGE_ABOUT]
 
-#Gemini Model
-GEMINI_MODEL = "llama-3.3-70b-versatile"
+# Groq Model
+GROQ_MODEL = "llama-3.3-70b-versatile"
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS  = 2048
 

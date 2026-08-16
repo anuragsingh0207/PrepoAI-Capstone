@@ -4,7 +4,7 @@ if _UI_DIR not in sys.path:
     sys.path.insert(0, _UI_DIR)
 import streamlit as st
 from styles import page_header_html
-from config import get_gemini_client, evaluate_answer
+from config import get_groq_client, evaluate_answer
 from constants import FOREST, SAND, RUST, SAGE, CREAM, WHITE, PAGE_RESULT, PAGE_MOCK
 
 def render():
@@ -128,7 +128,7 @@ def render():
 
 
 def _evaluate_and_save(questions: list[dict], answers: dict):
-    client = get_gemini_client()
+    client = get_groq_client()
     results = []
     total_score = 0
     max_score   = 0

@@ -1,16 +1,19 @@
 import streamlit as st
 from groq import Groq
 import json, re
+import os
+from dotenv import load_dotenv
 from constants import (
-    GEMINI_MODEL, CHAT_SYSTEM_PROMPT,
+    GROQ_MODEL, CHAT_SYSTEM_PROMPT,
     QUESTION_SYSTEM_PROMPT, EVALUATION_SYSTEM_PROMPT,
     DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS
 )
 
-API_KEY = ""
+load_dotenv()
+API_KEY = os.getenv("GROQ_API_KEY", "")
 
 @st.cache_resource
-def get_gemini_client():
+def get_groq_client():
     return Groq(api_key=API_KEY)
 
 def build_context_from_docs(uploaded_docs: list[dict]) -> str:
@@ -31,7 +34,7 @@ def stream_chat_response(client, messages: list[dict], context: str):
         groq_messages.append({"role": m["role"], "content": m["content"]})
 
     response = client.chat.completions.create(
-        model=GEMINI_MODEL,
+        model=GROQ_MODEL,
         messages=groq_messages,
         temperature=st.session_state.get("temperature", DEFAULT_TEMPERATURE),
         max_tokens=st.session_state.get("max_tokens", DEFAULT_MAX_TOKENS),
@@ -57,7 +60,7 @@ def generate_questions(client, context: str, num_q: int, difficulty: str, q_type
     )
 
     response = client.chat.completions.create(
-        model=GEMINI_MODEL,
+        model=GROQ_MODEL,
         messages=[
             {"role": "system", "content": prompt_template},
             {"role": "user", "content": f"Study material:\n{context[:12000]}\n\nGenerate {num_q} questions now."}
@@ -77,7 +80,7 @@ def generate_questions(client, context: str, num_q: int, difficulty: str, q_type
 
 def evaluate_answer(client, question: str, correct_answer: str, user_answer: str) -> dict:
     response = client.chat.completions.create(
-        model=GEMINI_MODEL,
+        model=GROQ_MODEL,
         messages=[
             {"role": "system", "content": EVALUATION_SYSTEM_PROMPT},
             {"role": "user", "content": (
